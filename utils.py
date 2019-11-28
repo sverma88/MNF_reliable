@@ -3,6 +3,8 @@ import datetime
 import matplotlib.dates as mdates
 from matplotlib.transforms import Transform
 import matplotlib.pyplot as plt
+from scipy.stats.stats import pearsonr
+import csv
 
 
 
@@ -157,8 +159,8 @@ def obtain_stats(x, zone_index,zones_categorical_index, zones_categories):
     data = np.array(x)
     data_values = data[:,1:]
 
-    data_rows = data.shape[0]
-    data_cols = data_values.shape[1]
+    total_days = data.shape[0]
+    total_Zones = data_values.shape[1] -1
 
     absolute_sum = np.sum(np.absolute(data_values))  #take absolute of each value
     total_sum = np.sum(data_values)
@@ -170,14 +172,14 @@ def obtain_stats(x, zone_index,zones_categorical_index, zones_categories):
     negative_sum = np.sum(negative_value)
 
     print("----- All Zones Statistics --------")
-    print(" Total Zones ---->", data_cols -1)
-    print("All Zones MNF Absolute Sum ---->", absolute_sum)
-    print("All Zones MNF Positive Sum ---->", positive_sum)
-    print("All Zones MNF Negative Sum ---->", negative_sum)
+    print(" Total Zones ---->", total_Zones)
+    print("All Zones MNF Absolute Sum/Day  ---->", absolute_sum / total_days)
+    print("All Zones MNF Positive Sum/Day  ---->", positive_sum / total_days)
+    print("All Zones MNF Negative Sum/Day  ---->", negative_sum / total_days)
     print("All Zones MNF Total Sum ---->", total_sum)
-    print("All Zones MNF/Day  ---->",total_sum/data_rows)
+    print("All Zones MNF/Day  ---->",total_sum/total_days)
     print("\n ")
-    All_zones_mnf_day = total_sum / data_rows
+    All_zones_mnf_day = total_sum / total_days
 
     data_index = data[:,zone_index]
     # print(data_index.shape)
@@ -195,13 +197,13 @@ def obtain_stats(x, zone_index,zones_categorical_index, zones_categories):
 
     print("----- Reliable Zones Statistics --------")
     print(" Total Zones ---->", len(zone_index))
-    print("Reliable Zones MNF Absolute Sum  ---->", absolute_sum_indexed)
-    print("Reliable Zones MNF Positive Sum ---->", positive_sum_indexed)
-    print("Reliable Zones MNF Negative Sum ---->", negative_sum_indexed)
+    print("Reliable Zones MNF Absolute Sum/Day  ---->", absolute_sum_indexed / total_days)
+    print("Reliable Zones MNF Positive Sum/Day ---->", positive_sum_indexed / total_days)
+    print("Reliable Zones MNF Negative Sum/Day ---->", negative_sum_indexed / total_days)
     print("Reliable Zones MNF Total Sum ---->", total_sum_indexed)
-    print("Reliable Zones MNF/Day ---->", total_sum_indexed / data_rows)
+    print("Reliable Zones MNF/Day ---->", total_sum_indexed / total_days)
     print("\n ")
-    Reliable_zones_mnf_day = total_sum_indexed / data_rows
+    Reliable_zones_mnf_day = total_sum_indexed / total_days
 
 
     #### Reliable Zones Individual Statistics
@@ -213,7 +215,7 @@ def obtain_stats(x, zone_index,zones_categorical_index, zones_categories):
         print("\n \n")
         print("------ {} Zone -------".format(zones_categories[iter]))
 
-        #### Calculate the statistics
+       #### Calculate the statistics
 
         data_index = data[:, zones_categorical_index[iter]]
 
@@ -228,16 +230,150 @@ def obtain_stats(x, zone_index,zones_categorical_index, zones_categories):
 
         print("----- Zones Statistics --------")
         print(" Total Zones ---->", len(zones_categorical_index[iter]))
-        # print("MNF Absolute Sum  ---->", absolute_sum_indexed)
-        # print("MNF Positive Sum ---->", positive_sum_indexed)
-        # print("MNF Negative Sum ---->", negative_sum_indexed)
-        # print("MNF Total Sum ---->", total_sum_indexed)
-        print("MNF/Day ---->", total_sum_indexed / data_rows)
+        print("MNF Absolute Sum/Day  ---->", absolute_sum_indexed / total_days)
+        print("MNF Positive Sum/Day ---->", positive_sum_indexed / total_days)
+        print("MNF Negative Sum/Day ---->", negative_sum_indexed / total_days)
+        print("MNF Total Sum ---->", total_sum_indexed )
+        print("MNF/Day ---->", total_sum_indexed / total_days)
 
-        Categorical_zones_mnf_day.append(total_sum_indexed / data_rows)
+        Categorical_zones_mnf_day.append(total_sum_indexed / total_days)
 
 
     return Categorical_zones_mnf_day, Reliable_zones_mnf_day, All_zones_mnf_day
+
+
+def Calculate_MNF_Day(data,connections,zone_names, lim_A, lim_b):
+    '''
+
+    :param data         : Raw MNF data for each zone from Johnny's sheet, remember column '0' is date
+    :param connections  : The Number of connections for each zone
+    :param zone_names   : The name of each pressure zone
+    :param lim_A        : Lower Limit to calculate count of MNF's within bounds
+    :param lim_B        : Upper Limit to calculate count of MNF's within bounds
+    :return             : MNF/NC for each zone
+    '''
+
+    data = np.array(data)
+    data_values = data[:, 1:]
+    total_days = data.shape[0]
+    # print(data_values[0])
+
+    connections = np.array(connections)
+    connections[connections == 0] = 1.0
+
+    zone_sum = np.sum(data_values, axis=0)
+    MNF_Day_Conn_L = (zone_sum * 1000000) / (connections * total_days *24)
+
+    # print(connections)
+    # print(zone_sum)
+
+    Boolean_matching = (MNF_Day_Conn_L > lim_A) & (MNF_Day_Conn_L <= lim_b)
+    MNF_Count = sum(Boolean_matching*1)
+    # print(Boolean_matching)
+
+    MNF_Day_Conn_L = dict(zip(zone_names,MNF_Day_Conn_L))  # Dictionary of MNF Pressure Zones and their respective MNF's
+
+    return MNF_Day_Conn_L, MNF_Count
+
+
+def Find_Zones_Corr(Billing_Qants, MNF_Day_Conn_L, plots_dir):
+    '''
+
+    :param Billing_Qants        : Dictionary of dictionaries with Billing Qantas
+    :param MNF_Day_Conn_L       : Dictionary of MNF Pressure Zones and their respective MNF
+    :param plots_dir            : Directory to save the plots
+    :return                     : Dictionary of MNF Pressure Zones and industrial usage each quant
+    '''
+
+    Pressure_Zones = MNF_Day_Conn_L.keys()
+    Pressure_Zones_revised = [PZ[:-6] if ('_NO_PZ' in PZ) else PZ for PZ in Pressure_Zones]
+    MNF_Day_Conn_L_values  = [MNF_Day_Conn_L[k] for k in Pressure_Zones]
+    MNF_Day_Conn_L_revised = dict(zip(Pressure_Zones_revised, MNF_Day_Conn_L_values))
+    # print(Pressure_Zones_revised)
+    perc = 0.2
+
+    for iter,key in enumerate(Billing_Qants.keys()):
+
+        # matched_stats = csv.writer(open("matched_stats_{}.csv".format(iter), "w"))  # csv file to write the quats
+        keys_quant = Billing_Qants[key].keys()
+        Quant      = Billing_Qants[key]
+        matched_keys = [k for k in keys_quant if k in Pressure_Zones_revised]
+        Industrial_usage = [Quant[k] for k in matched_keys]
+        Respective_MNF   = [MNF_Day_Conn_L_revised[k] for k in matched_keys]
+
+        Matched_data = list(zip(matched_keys, Respective_MNF, Industrial_usage))
+        Matched_data_length = len(Industrial_usage)
+
+        with open(plots_dir + "matched_stats_{}.csv".format(iter), 'w') as csv_file:
+            file_writer = csv.writer(csv_file)
+            file_writer.writerow(['Pressure Zone', 'MNF', 'Industrial Usage'])
+            for row in range(Matched_data_length):
+                file_writer.writerow(Matched_data[row])
+
+
+        corr = pearsonr(Industrial_usage,Respective_MNF)
+        print('----- Billing Quant {} ---- \n'.format(key))
+        print("Peasons's Correlation : ---->",corr[0])
+        print("p-value : ---->",corr[1])
+
+        # Plot the graphs
+        fig, ax = plt.subplots()
+        plt.plot(Respective_MNF, Industrial_usage, linestyle= 'none', marker='o')
+        plt.ylabel('Industrial Usage: {} - {}'.format(np.round(perc*iter,1), np.round(perc*(iter+1),1)))
+        plt.xlabel('MNF in L/D/Connection')
+        plt.title('Correlation plot for MNF-Industrial Usage')
+        plt.grid(True)
+        plt.text(0.4, 0.88, 'Peasons\'s Correlation : {}'.format(np.round(corr[0],4))
+                 , horizontalalignment='center', verticalalignment='center',
+                 transform=ax.transAxes, fontweight='bold', fontsize= 14)
+        plt.savefig(plots_dir + 'Plt_Corr_Usage_{}_{}.png'.format(perc*iter, perc*(iter+1)), bbox_inches='tight')
+        plt.savefig(plots_dir + 'Plt_Corr_Usage_{}_{}.pdf'.format(perc*iter, perc*(iter+1)))
+        # plt.show()
+
+        # print("-------- Matched Zones ---------")
+        # print(matched_keys)
+        #
+        # print("-------- Industrial Usage ---------")
+        # print(Industrial_usage)
+        #
+        print("-------- MNF Usage ---------")
+        print(Respective_MNF)
+
+
+def Update_reliable(Reliable_Zones, All_Zones, save_dir):
+
+    '''
+
+    :param Reliable_Zones   : Reliable Zones as per krish
+    :param All_Zones        : Data from any existing Sheet
+    :param save_dir         : Directory to save the sheet
+    :return                 : none
+    '''
+
+    Zones_name       = All_Zones.iloc[:,0]
+    MNF              = All_Zones.iloc[:,1]
+    Industry_Usage   = All_Zones.iloc[:,2]
+    Reliable_Zones   = [PZ[:-6] if ('_NO_PZ' in PZ) else PZ for PZ in Reliable_Zones] # Remove NO PZ as Zones Names does not have it
+    Zone_Reliability = [PZ in Reliable_Zones for PZ in Zones_name]
+    Zone_Reliability = list(np.array(Zone_Reliability)*1)
+
+    Matched_data = list(zip(Zones_name, MNF, Industry_Usage, Zone_Reliability))
+    Matched_data_length = len(Zones_name)
+
+    with open(save_dir + "Zones_MNF_Industry_ReliabilityPtr.csv", 'w') as csv_file:
+        file_writer = csv.writer(csv_file)
+        file_writer.writerow(['Pressure Zone', 'MNF', 'Industrial Usage', 'Reliability'])
+        for row in range(Matched_data_length):
+            file_writer.writerow(Matched_data[row])
+
+
+
+
+
+
+
+
+
 
 
 

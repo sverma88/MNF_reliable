@@ -123,7 +123,7 @@ plt.ylim(0,max(number)+30)
 plt.text(0.7, 0.88, 'MNF-ML/Day Reliable {}\nMNF-ML/Day Others {}'.format(np.round(Reliable_zones_mnf_day,4), np.round(bar_label[-1],4))
          , horizontalalignment='center', verticalalignment='center',
          transform=ax.transAxes, fontweight='bold')
-plt.savefig(plots_dir + 'MNF_Distribution.pdf')
+plt.savefig(plots_dir + 'MNF_Distribution.png')
 # plt.show()
 
 
@@ -155,5 +155,5 @@ plt.ylim(0,max(number)+30)
 plt.text(0.7, 0.88, 'MNF-ML/Day all Zones {}'.format(np.round(All_zones_mnf_day,4))
          , horizontalalignment='center', verticalalignment='center',
          transform=ax.transAxes, fontweight='bold')
-plt.savefig(plots_dir + 'Zones_Distribution.pdf')
+plt.savefig(plots_dir + 'Zones_Distribution.png')
 # plt.show()
